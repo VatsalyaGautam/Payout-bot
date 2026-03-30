@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+
+# build outputs
+dist
+build
+.next
+out
+
+# env files
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# JSON (optional – ignore generated configs if needed)
+*.json
+
+# lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# misc
+coverage
+.tmp
+.cache
+.DS_Store

@@ -1,0 +1,13 @@
+services:
+    app:
+        build: .
+        restart: always
+        env_file: .env
+        depends_on:
+            - db
+        environment:
+            - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+            - DISCORD_APPLICATION_ID=${DISCORD_APPLICATION_ID}
+            - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+            - ALERT_DAYS_BEFORE=3
+            - CRON_SCHEDULE=0 9 * * *
