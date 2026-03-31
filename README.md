@@ -1,105 +1,113 @@
-# 💳 Payment Alert Bot
+# 💳 Payout Notify Bot
 
-Discord bot for payment due alerts. TypeScript + Bun + discord.js + PostgreSQL.
+A production-ready Discord bot built with **Bun**, **TypeScript**, and **PostgreSQL** to manage recurring payments and ensure you never miss a due date.
 
-- Sends daily alert embeds starting N days before each due date
-- Reply `acknowledged` to an alert → bot reacts ✅ to the alert and your reply
-  (WebSocket, no polling)
-- `/check` slash command shows all payments due this month with paid/unpaid status (ephemeral)
-- `/add`, `/update`, `/delete` slash commands for easy payment management
+---
 
-## Project structure
+## ✨ Features
 
+- 🚀 **Automated Alerts**: Intelligent daily checks for upcoming payments.
+- ✅ **One-Click Acknowledgement**: Simply reply `ack` or `acknowledged` to an alert message.
+- 🛠️ **Slash Commands**: Full management suite (`/check`, `/add`, `/update`, `/delete`).
+- 🌊 **Real-time Synchronization**: Powered by Discord's Gateway (WebSockets).
+- 🗄️ **Robust Persistence**: Relationally structured PostgreSQL storage with atomic operations.
+- 🐳 **Docker Optimized**: Multi-stage builds and container-ready configuration.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+graph TD
+    A[Discord Client] --> B[Interaction Controller]
+    A --> C[Message Controller]
+    B --> D[Slash Commands]
+    B --> E[Alert Service]
+    C --> E
+    F[Cron Scheduler] --> G[Checker]
+    G --> E
+    G --> H[Payment Service]
+    E --> I[PostgreSQL DB]
+    H --> I
 ```
-src/
-  index.ts       — bot entrypoint, event wiring, cron scheduler
-  client.ts      — discord.js Client + slash command registration
-  commands/      — slash command handlers (/check, /add, /update, /delete)
-  db/            — PostgreSQL connection, schema initialization, and queries
-  utils/
-    checker.ts     — daily alert logic, sends embeds to channel
-    dates.ts       — date utilities
-    acknowledge.ts — CLI acknowledge (no gateway needed)
-  types/         — shared TypeScript types
-```
 
-## Setup
+---
 
-### 1. Create a Discord Bot
+## 🛠️ Installation & Setup
 
-1. Go to [discord.com/developers/applications](https://discord.com/developers/applications) → **New Application**
-2. **General Information** → copy **Application ID**
-3. **Bot** → **Reset Token** → copy token; enable **Message Content Intent**
-4. **OAuth2 → URL Generator**:
-    - Scopes: `bot`, `applications.commands`
-    - Bot Permissions: `Send Messages`, `Add Reactions`, `Manage Messages`, `Read Message History`
-5. Open the generated URL and invite the bot to your server
+### 1. Discord Developer Portal Setup
 
-> **Note:** No Interactions Endpoint URL needed — discord.js uses the Gateway (WebSocket), not HTTP callbacks.
+1. Create a new application at [Discord Developers](https://discord.com/developers/applications).
+2. Under **Bot**, enable **Message Content Intent**.
+3. Generate an Invite URL via **OAuth2 URL Generator** with scopes: `bot`, `applications.commands`.
+4. Required permissions: `Send Messages`, `Add Reactions`, `Embed Links`, `Manage Messages`.
 
-### 2. Configure Environment
+### 2. Environment Configuration
 
-Create a `.env` file in the root:
+Create a `.env` file in the root directory:
 
 ```env
-DATABASE_URL=postgres://user:pass@localhost:5432/bot
-DISCORD_BOT_TOKEN=...
-DISCORD_APPLICATION_ID=...
-DISCORD_CHANNEL_ID=...
-DISCORD_GUILD_ID=...
+# Discord
+DISCORD_BOT_TOKEN="your_bot_token"
+DISCORD_APPLICATION_ID="your_app_id"
+DISCORD_CHANNEL_ID="target_channel_id"
+DISCORD_GUILD_ID="your_guild_id"   # Optional — omit for global command registration
+
+# Database
+POSTGRES_USER=bot
+POSTGRES_PASSWORD=bot
+POSTGRES_DB=payouts
+
+# Application
+ALERT_DAYS_BEFORE=3
+CRON_SCHEDULE="0 9 * * *"
+APP_TIMEZONE="UTC"                 # Any IANA timezone e.g. Asia/Kolkata, America/New_York
+
+# DB pool tuning (optional)
+DB_POOL_MAX=10
+DB_IDLE_TIMEOUT=20
+DB_CONNECT_TIMEOUT=10
 ```
 
-### 3. Database Setup
+### 3. Deployment
 
-The bot expects a PostgreSQL database. The bot will automatically initialize the required tables on startup.
-
-### 4. Run
-
-```bash
-bun install
-bun start
-```
-
-Or with Docker:
+#### Using Docker (Recommended)
 
 ```bash
 docker compose up -d
-docker compose logs -f
 ```
 
-## Slash Commands
+#### Running Locally
 
-| Command | Description |
-| --- | --- |
-| `/check` | Shows all payments due this month and their paid status |
-| `/add` | Add a new recurring payment |
-| `/update` | Update an existing payment's details |
-| `/delete` | Remove a payment |
+Ensure you have [Bun](https://bun.sh) installed:
 
-## CLI Commands
+```bash
+bun install
+bun run src/index.ts
+```
 
-| Command | Description |
-| --- | --- |
-| `bun run src/index.ts check` | Run a one-off check, then exit |
-| `bun run src/index.ts acknowledge <id>` | Manually acknowledge a payment |
-| `bun run src/db/truncate.ts` | Clear all tables (Development only) |
+---
 
-## Environment variables
+## 🎮 Slash Commands
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DATABASE_URL` | required | PostgreSQL connection string |
-| `DISCORD_BOT_TOKEN` | required | Bot token |
-| `DISCORD_APPLICATION_ID` | required | For registering slash commands |
-| `DISCORD_CHANNEL_ID` | required | Channel to post alerts in |
-| `ALERT_DAYS_BEFORE` | `3` | Days before due to start alerting |
-| `CRON_SCHEDULE` | `0 9 * * *` | Daily check time |
+| Command   | Description                                         |
+| :-------- | :-------------------------------------------------- |
+| `/check`  | View all payments due this month with their status. |
+| `/add`    | Register a new recurring payment.                   |
+| `/update` | Modify details of an existing payment.              |
+| `/delete` | Remove a payment from the registry.                 |
 
-## Required Bot Permissions
+---
 
-| Permission | Why |
-| --- | --- |
-| Send Messages | Post alert embeds |
-| Read Message History | Fetch the original message to react to it |
-| Add Reactions | React ✅ on acknowledged messages |
-| Manage Messages | Delete the user's `acknowledged` reply |
+## 🧪 Development & Testing
+
+```bash
+# Run all tests
+bun test
+
+# Run a specific test file
+bun test tests/dates.test.ts
+
+# Format code
+bun run format
+```

@@ -1,13 +1,13 @@
-import postgres, { Sql } from 'postgres'
-import { Payment, PaymentRow } from '@/types/db'
-import { Acknowledgment, LastAlert } from '@/types/types'
-import { DatabaseError } from '@/utils/errors'
+import postgres, { Sql } from 'postgres';
+import { Payment, PaymentRow } from '@/types/db';
+import { Acknowledgment, LastAlert } from '@/types/types';
+import { DatabaseError, isPostgresError, ValidationError } from '@/utils/errors';
 import {
   DATABASE_URL,
   DB_POOL_MAX,
   DB_IDLE_TIMEOUT,
   DB_CONNECT_TIMEOUT,
-} from '@/constants/constants'
+} from '@/constants/constants';
 
 const sql: Sql = postgres(DATABASE_URL, {
   max: DB_POOL_MAX,
@@ -17,7 +17,7 @@ const sql: Sql = postgres(DATABASE_URL, {
     ...postgres.camel,
     undefined: null,
   },
-})
+});
 
 export async function initDB() {
   try {
@@ -35,7 +35,7 @@ export async function initDB() {
         "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
         UNIQUE (name, "dayOfMonth")
       );
-    `
+    `;
 
     await sql`
       CREATE TABLE IF NOT EXISTS acknowledgments (
@@ -44,7 +44,7 @@ export async function initDB() {
         "acknowledgedAt" TIMESTAMPTZ DEFAULT NOW(),
         PRIMARY KEY ("paymentId", "dueDate")
       );
-    `
+    `;
 
     await sql`
       CREATE TABLE IF NOT EXISTS last_alerts (
@@ -53,7 +53,7 @@ export async function initDB() {
         "alertedAt" TIMESTAMPTZ NOT NULL,
         PRIMARY KEY ("paymentId", "dueDate")
       );
-    `
+    `;
 
     await sql`
       CREATE TABLE IF NOT EXISTS message_map (
@@ -61,7 +61,7 @@ export async function initDB() {
         "paymentId" TEXT NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
         "dueDate" DATE NOT NULL
       );
-    `
+    `;
 
     // Indexes have no dependencies — run in parallel
     await Promise.all([
@@ -73,7 +73,7 @@ export async function initDB() {
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to initialize database: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -85,15 +85,15 @@ export async function getAllPayments(): Promise<Payment[]> {
       SELECT id, name, "dayOfMonth", "nextDue", amount, currency, notes, "autoDebit", "updatedAt"
       FROM payments
       ORDER BY "nextDue" ASC
-    `
-    return rows.map(r => ({
+    `;
+    return rows.map((r) => ({
       ...r,
       amount: Number(r.amount),
-    }))
+    }));
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to fetch payments: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -115,24 +115,28 @@ export async function upsertPayment(payment: Payment) {
         notes = EXCLUDED.notes,
         "autoDebit" = EXCLUDED."autoDebit",
         "updatedAt" = NOW()
-    `
+    `;
   } catch (err: unknown) {
+    if (isPostgresError(err) && err.code === '23505' && err.constraint === 'payments_name_dayofmonth_key') {
+      throw new ValidationError(
+        `A payment named "${payment.name}" on day ${payment.dayOfMonth} already exists.`
+      );
+    }
     throw new DatabaseError(
       `Failed to upsert payment ${payment.id}: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
-
 export async function deletePayment(id: string) {
   try {
     const [row] = await sql<{ id: string }[]>`
       DELETE FROM payments WHERE id = ${id} RETURNING id
-    `
-    return row ?? null
+    `;
+    return row ?? null;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to delete payment ${id}: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -144,11 +148,11 @@ export async function addAcknowledgment(paymentId: string, dueDate: string) {
       INSERT INTO acknowledgments ("paymentId", "dueDate")
       VALUES (${paymentId}, ${dueDate})
       ON CONFLICT ("paymentId", "dueDate") DO NOTHING
-    `
+    `;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to add acknowledgment for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -161,24 +165,12 @@ export async function hasAcknowledgment(
       SELECT 1 FROM acknowledgments
       WHERE "paymentId" = ${paymentId} AND "dueDate" = ${dueDate}
       LIMIT 1
-    `
-    return !!row
+    `;
+    return !!row;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to check acknowledgment for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
-    )
-  }
-}
-
-export async function getAcknowledgments(): Promise<Acknowledgment[]> {
-  try {
-    return await sql<Acknowledgment[]>`
-      SELECT "paymentId", "dueDate", "acknowledgedAt" FROM acknowledgments
-    `
-  } catch (err: unknown) {
-    throw new DatabaseError(
-      `Failed to fetch acknowledgments: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -194,12 +186,12 @@ export async function hasAlertBeenSent(
       WHERE "paymentId" = ${paymentId}
       AND "dueDate" = ${dueDate}
       LIMIT 1
-    `
-    return !!row
+    `;
+    return !!row;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to check last alert for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -214,23 +206,11 @@ export async function setLastAlert(
       VALUES (${paymentId}, ${dueDate}, ${alertedAt})
       ON CONFLICT ("paymentId", "dueDate") DO UPDATE SET
         "alertedAt" = EXCLUDED."alertedAt"
-    `
+    `;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to set last alert for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
-    )
-  }
-}
-
-export async function getLastAlerts(): Promise<LastAlert[]> {
-  try {
-    return await sql<LastAlert[]>`
-      SELECT "paymentId", "dueDate", "alertedAt" FROM last_alerts
-    `
-  } catch (err: unknown) {
-    throw new DatabaseError(
-      `Failed to fetch last alerts: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -248,28 +228,11 @@ export async function setMessageMap(
       ON CONFLICT ("messageId") DO UPDATE SET
         "paymentId" = EXCLUDED."paymentId",
         "dueDate" = EXCLUDED."dueDate"
-    `
+    `;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to set message map for ${messageId}: ${err instanceof Error ? err.message : String(err)}`
-    )
-  }
-}
-
-export async function getMessageMap(): Promise<
-  Record<string, { paymentId: string; dueDate: string }>
-> {
-  try {
-    const rows = await sql<{ messageId: string; paymentId: string; dueDate: string }[]>`
-      SELECT "messageId", "paymentId", "dueDate" FROM message_map
-    `
-    return Object.fromEntries(
-      rows.map(r => [r.messageId, { paymentId: r.paymentId, dueDate: r.dueDate }])
-    )
-  } catch (err: unknown) {
-    throw new DatabaseError(
-      `Failed to fetch message map: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 
@@ -280,12 +243,12 @@ export async function getMessageMapping(
     const [row] = await sql<{ paymentId: string; dueDate: string }[]>`
       SELECT "paymentId", "dueDate" FROM message_map
       WHERE "messageId" = ${messageId}
-    `
-    return row ?? undefined
+    `;
+    return row ?? undefined;
   } catch (err: unknown) {
     throw new DatabaseError(
       `Failed to fetch message mapping for ${messageId}: ${err instanceof Error ? err.message : String(err)}`
-    )
+    );
   }
 }
 

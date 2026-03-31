@@ -17,6 +17,12 @@ export async function processAcknowledgment(message: Message): Promise<void> {
 
   const { paymentId, dueDate } = mapping;
 
+  // Guard: already acknowledged — silently skip
+  if (await db.hasAcknowledgment(paymentId, dueDate)) {
+    console.log(`[AlertService] Already acknowledged ${paymentId} for ${dueDate} — skipping`);
+    return;
+  }
+
   try {
     // 1. DB acknowledgment
     await db.addAcknowledgment(paymentId, dueDate);

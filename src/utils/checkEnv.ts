@@ -1,16 +1,24 @@
 import { handleError } from './errors';
 
+export function getEnv(key: string, defaultValue: string): string;
+export function getEnv(key: string, defaultValue?: undefined, required?: true): string;
+export function getEnv(key: string, defaultValue?: string, required?: boolean): string | undefined;
 export function getEnv(
   key: string,
   defaultValue?: string,
   required: boolean = false
-): string {
+): string | undefined {
   const value = Bun.env[key];
-  if (!value && required) {
-    handleError('Config:', `${key} is not set`);
-    process.exit(1);
+
+  if (!value) {
+    if (required) {
+      handleError('Config:', `${key} is not set`);
+      process.exit(1);
+    }
+    return defaultValue;
   }
-  return value ?? defaultValue ?? '';
+
+  return value;
 }
 
 export function getEnvNumber(key: string, defaultValue: number): number {

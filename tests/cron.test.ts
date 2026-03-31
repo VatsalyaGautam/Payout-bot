@@ -10,6 +10,14 @@ describe('Cron Scheduling', () => {
         expect(next?.getMinutes()).toBe(0);
     });
 
+    test('Monthly 1st at midnight schedule is valid', () => {
+        const job = new Cron('0 0 1 * *');
+        const next = job.nextRun();
+        expect(next).toBeDefined();
+        expect(next?.getDate()).toBe(1);
+        expect(next?.getHours()).toBe(0);
+    });
+
     test('Short interval trigger works', async () => {
         let triggered = false;
         const job = new Cron('* * * * * *', () => {

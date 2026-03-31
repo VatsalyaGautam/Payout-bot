@@ -8,9 +8,14 @@ export async function handleMessage(message: Message): Promise<void> {
             await message.fetch();
         }
         if (message.author.bot) return;
-        console.log(`[MessageController] Received message from ${message.author.username}`);
+        console.log(
+            `[MessageController] Received message from ${message.author.username}`
+        );
         await processAcknowledgment(message);
     } catch (err: unknown) {
-        handleError(`[MessageController] Error handling message ${message.id}:`, err);
+        handleError(
+            `[MessageController] Error handling message ${message.id}:`,
+            err
+        );
     }
 }
