@@ -65,7 +65,9 @@ async function handleAutocomplete(interaction: AutocompleteInteraction): Promise
         if (!interaction.responded) {
             try {
                 await interaction.respond([]);
-            } catch {}
+            } catch (e: unknown) {
+                handleError('[InteractionController] Failed to send empty autocomplete response', e);
+            }
         }
     }
 }

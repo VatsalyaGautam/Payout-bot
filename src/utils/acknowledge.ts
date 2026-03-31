@@ -1,36 +1,26 @@
-import { loadConfig, loadState, saveState } from '@/store';
-import { today, nextOccurrence } from '@/utils/dates';
+import { getAllPayments, hasAcknowledgment, addAcknowledgment } from '@/db/db';
+import { nextOccurrence, today } from '@/utils/dates';
 import { handleError } from './errors';
 
 export async function acknowledge(paymentId: string): Promise<void> {
-    const { payments } = await loadConfig();
-    const state = await loadState();
+  const payments = await getAllPayments();
+  const payment = payments.find((p) => p.id === paymentId);
 
-    const payment = payments.find((p) => p.id === paymentId);
-    if (!payment) {
-        handleError('Acknowledge:', `No payment found with id "${paymentId}"\n    Available ids: ${payments.map((p) => p.id).join(', ')}`);
-        process.exit(1);
-    }
-
-    const nextDue = payment.nextDue ?? nextOccurrence(payment.dayOfMonth);
-
-    const isAcknowledged = state.acknowledged.some(
-        (a) => a.paymentId === payment.id && a.dueDate === nextDue
+  if (!payment) {
+    handleError(
+      'Acknowledge:',
+      `No payment found with id "${paymentId}"\n    Available ids: ${payments.map((p) => p.id).join(', ')}`
     );
+    process.exit(1);
+  }
 
-    if (isAcknowledged) {
-        console.log(
-            `${payment.name} (${nextDue}) is already acknowledged`
-        );
-        return;
-    }
+  const nextDue = payment.nextDue ?? nextOccurrence(payment.dayOfMonth);
 
-    state.acknowledged.push({
-        paymentId: payment.id,
-        dueDate: nextDue,
-        acknowledgedAt: today(),
-    });
+  if (await hasAcknowledgment(payment.id, nextDue)) {
+    console.log(`${payment.name} (${nextDue}) is already acknowledged`);
+    return;
+  }
 
-    await saveState(state);
-    console.log(`Acknowledged: ${payment.name} for ${nextDue}`);
+  await addAcknowledgment(payment.id, nextDue);
+  console.log(`Acknowledged: ${payment.name} for ${nextDue}`);
 }

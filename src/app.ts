@@ -19,14 +19,14 @@ export async function bootstrap(c: Client<true>) {
         await registerCommands(GUILD_ID);
 
         console.log(`
--> Logged in as  : ${c.user.tag}
+-> Logged in as  : ${c.user.username}
 -> Alert window  : ${ALERT_DAYS} days
 -> Cron schedule : ${CRON_EXPR}
         `);
 
         await runCron();
         new Cron(CRON_EXPR, runCron);
-        
+
         initialized = true; //Set only when truly initialized
     } catch (err: unknown) {
         handleError('Startup Failure', new InitializationError('Core Systems', err));
@@ -65,15 +65,14 @@ export function setupLifecycle(client: Client) {
 
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
-    
+
     process.on('uncaughtException', (err: unknown) => {
         handleError('Uncaught Exception', err);
         process.exit(1);
     });
-    
-    process.on('unhandledRejection', (err: unknown) => {
-        handleError('Unhandled Rejection', err);
-        process.exit(1);
+
+    process.on('unhandledRejection', (reason: unknown) => {
+        handleError('Unhandled Rejection', reason);
     });
 }
 

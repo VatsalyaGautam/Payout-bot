@@ -21,6 +21,7 @@ const sql: Sql = postgres(DATABASE_URL, {
 
 export async function initDB() {
   try {
+    // Tables must be sequential — FK dependencies
     await sql`
       CREATE TABLE IF NOT EXISTS payments (
         id TEXT PRIMARY KEY,
@@ -61,26 +62,18 @@ export async function initDB() {
         "dueDate" DATE NOT NULL
       );
     `
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_ack_paymentId 
-      ON acknowledgments("paymentId");
-    `;
 
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_last_alerts_paymentId 
-      ON last_alerts("paymentId");
-    `;
-
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_message_map_paymentId 
-      ON message_map("paymentId");
-    `;
-    await sql`
-      CREATE INDEX IF NOT EXISTS idx_ack_payment_due 
-      ON acknowledgments("paymentId", "dueDate");
-    `;
+    // Indexes have no dependencies — run in parallel
+    await Promise.all([
+      sql`CREATE INDEX IF NOT EXISTS idx_last_alerts_paymentId ON last_alerts("paymentId")`,
+      sql`CREATE INDEX IF NOT EXISTS idx_message_map_paymentId ON message_map("paymentId")`,
+      // Composite index covers single-column paymentId lookups too — no separate idx_ack_paymentId needed
+      sql`CREATE INDEX IF NOT EXISTS idx_ack_payment_due ON acknowledgments("paymentId", "dueDate")`,
+    ]);
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to initialize database: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to initialize database: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -93,25 +86,26 @@ export async function getAllPayments(): Promise<Payment[]> {
       FROM payments
       ORDER BY "nextDue" ASC
     `
-
     return rows.map(r => ({
       ...r,
       amount: Number(r.amount),
     }))
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to fetch payments: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to fetch payments: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
 export async function upsertPayment(payment: Payment) {
   try {
-    if (!payment.nextDue) {
-      throw new Error("nextDue is required")
-    }
-
     return await sql`
       INSERT INTO payments (id, name, "dayOfMonth", "nextDue", amount, currency, notes, "autoDebit", "updatedAt")
-      VALUES (${payment.id}, ${payment.name}, ${payment.dayOfMonth}, ${payment.nextDue}, ${payment.amount}, ${payment.currency}, ${payment.notes ?? null}, ${payment.autoDebit ?? false}, NOW())
+      VALUES (
+        ${payment.id}, ${payment.name}, ${payment.dayOfMonth}, ${payment.nextDue},
+        ${payment.amount}, ${payment.currency}, ${payment.notes ?? null},
+        ${payment.autoDebit ?? false}, NOW()
+      )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         "dayOfMonth" = EXCLUDED."dayOfMonth",
@@ -123,7 +117,9 @@ export async function upsertPayment(payment: Payment) {
         "updatedAt" = NOW()
     `
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to upsert payment ${payment.id}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to upsert payment ${payment.id}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -134,7 +130,9 @@ export async function deletePayment(id: string) {
     `
     return row ?? null
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to delete payment ${id}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to delete payment ${id}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -148,7 +146,9 @@ export async function addAcknowledgment(paymentId: string, dueDate: string) {
       ON CONFLICT ("paymentId", "dueDate") DO NOTHING
     `
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to add acknowledgment for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to add acknowledgment for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -158,16 +158,15 @@ export async function hasAcknowledgment(
 ): Promise<boolean> {
   try {
     const [row] = await sql`
-      SELECT 1 FROM acknowledgments 
+      SELECT 1 FROM acknowledgments
       WHERE "paymentId" = ${paymentId} AND "dueDate" = ${dueDate}
       LIMIT 1
     `
     return !!row
   } catch (err: unknown) {
     throw new DatabaseError(
-      `Failed to check acknowledgment for ${paymentId}: ${err instanceof Error ? err.message : String(err)
-      }`
-    );
+      `Failed to check acknowledgment for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -177,11 +176,32 @@ export async function getAcknowledgments(): Promise<Acknowledgment[]> {
       SELECT "paymentId", "dueDate", "acknowledgedAt" FROM acknowledgments
     `
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to fetch acknowledgments: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to fetch acknowledgments: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
 // ─── Last Alerts ────────────────────────────────────────────────────────────
+
+export async function hasAlertBeenSent(
+  paymentId: string,
+  dueDate: string
+): Promise<boolean> {
+  try {
+    const [row] = await sql`
+      SELECT 1 FROM last_alerts
+      WHERE "paymentId" = ${paymentId}
+      AND "dueDate" = ${dueDate}
+      LIMIT 1
+    `
+    return !!row
+  } catch (err: unknown) {
+    throw new DatabaseError(
+      `Failed to check last alert for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
+    )
+  }
+}
 
 export async function setLastAlert(
   paymentId: string,
@@ -196,7 +216,9 @@ export async function setLastAlert(
         "alertedAt" = EXCLUDED."alertedAt"
     `
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to set last alert for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to set last alert for ${paymentId}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -206,13 +228,19 @@ export async function getLastAlerts(): Promise<LastAlert[]> {
       SELECT "paymentId", "dueDate", "alertedAt" FROM last_alerts
     `
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to fetch last alerts: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to fetch last alerts: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
 // ─── Message Map ───────────────────────────────────────────────────────────
 
-export async function setMessageMap(messageId: string, paymentId: string, dueDate: string) {
+export async function setMessageMap(
+  messageId: string,
+  paymentId: string,
+  dueDate: string
+) {
   try {
     return await sql`
       INSERT INTO message_map ("messageId", "paymentId", "dueDate")
@@ -222,11 +250,15 @@ export async function setMessageMap(messageId: string, paymentId: string, dueDat
         "dueDate" = EXCLUDED."dueDate"
     `
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to set message map for ${messageId}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to set message map for ${messageId}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
-export async function getMessageMap(): Promise<Record<string, { paymentId: string; dueDate: string }>> {
+export async function getMessageMap(): Promise<
+  Record<string, { paymentId: string; dueDate: string }>
+> {
   try {
     const rows = await sql<{ messageId: string; paymentId: string; dueDate: string }[]>`
       SELECT "messageId", "paymentId", "dueDate" FROM message_map
@@ -235,7 +267,9 @@ export async function getMessageMap(): Promise<Record<string, { paymentId: strin
       rows.map(r => [r.messageId, { paymentId: r.paymentId, dueDate: r.dueDate }])
     )
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to fetch message map: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to fetch message map: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
@@ -244,13 +278,15 @@ export async function getMessageMapping(
 ): Promise<{ paymentId: string; dueDate: string } | undefined> {
   try {
     const [row] = await sql<{ paymentId: string; dueDate: string }[]>`
-      SELECT "paymentId", "dueDate" FROM message_map 
+      SELECT "paymentId", "dueDate" FROM message_map
       WHERE "messageId" = ${messageId}
     `
     return row ?? undefined
   } catch (err: unknown) {
-    throw new DatabaseError(`Failed to fetch message mapping for ${messageId}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new DatabaseError(
+      `Failed to fetch message mapping for ${messageId}: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 
-export default sql
+export default sql;
